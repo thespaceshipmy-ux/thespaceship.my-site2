@@ -227,7 +227,10 @@
             <option value="cancelled" ${m.status === 'cancelled' ? 'selected' : ''}>cancelled</option>
           </select>
         </td>
-        <td><button class="btn small save-member-btn" data-id="${m.id}">Save</button></td>`;
+        <td>
+          <button class="btn small save-member-btn" data-id="${m.id}">Save</button>
+          <button class="btn small ghost delete-member-btn" data-id="${m.id}" data-name="${(m.full_name || '').replace(/"/g, '&quot;')}">Delete</button>
+        </td>`;
       tbody.appendChild(tr);
     }
 
@@ -242,6 +245,24 @@
         btn.disabled = false;
         btn.textContent = error ? 'Error' : 'Saved';
         setTimeout(() => { btn.textContent = 'Save'; }, 1500);
+      });
+    });
+
+    tbody.querySelectorAll('.delete-member-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const name = btn.dataset.name || 'this member';
+        if (!confirm(`Delete ${name}? This removes their login and booking history and can't be undone.`)) return;
+        btn.disabled = true;
+        btn.textContent = 'Deleting…';
+        try {
+          await callFunction('delete-member', { member_id: id });
+          await loadMembers();
+        } catch (e) {
+          alert(e.message);
+          btn.disabled = false;
+          btn.textContent = 'Delete';
+        }
       });
     });
   }
