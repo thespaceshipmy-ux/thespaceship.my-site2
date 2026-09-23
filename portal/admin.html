@@ -14,6 +14,7 @@
   .inline-edit input, .inline-edit select{ padding:6px 8px; font-size:13px; }
   td.actions{ white-space:nowrap; }
   td.actions .btn{ margin-right:6px; }
+  .btn-row{ display:flex; flex-wrap:nowrap; gap:8px; align-items:center; }
 </style>
 </head>
 <body>
@@ -227,9 +228,11 @@
             <option value="cancelled" ${m.status === 'cancelled' ? 'selected' : ''}>cancelled</option>
           </select>
         </td>
-        <td>
-          <button class="btn small save-member-btn" data-id="${m.id}">Save</button>
-          <button class="btn small ghost delete-member-btn" data-id="${m.id}" data-name="${(m.full_name || '').replace(/"/g, '&quot;')}">Delete</button>
+        <td class="actions">
+          <div class="btn-row">
+            <button class="btn small save-member-btn" data-id="${m.id}">Save</button>
+            <button class="btn small ghost delete-member-btn" data-id="${m.id}" data-name="${(m.full_name || '').replace(/"/g, '&quot;')}">Delete</button>
+          </div>
         </td>`;
       tbody.appendChild(tr);
     }
