@@ -28,6 +28,22 @@
         </div>
         <button class="btn" id="signin-btn" style="width:100%; justify-content:center;">Log In</button>
         <p class="msg" id="signin-msg"></p>
+        <p style="text-align:center; margin-top:14px;">
+          <a href="#" id="forgot-link" style="font-size:13px;">Forgot your password?</a>
+        </p>
+      </div>
+
+      <div id="forgot-form" hidden>
+        <p class="lede" style="text-align:center; margin:0 0 20px;">Enter your email and we'll send you a reset link.</p>
+        <div class="field">
+          <label for="forgot-email">Email</label>
+          <input type="email" id="forgot-email" autocomplete="username">
+        </div>
+        <button class="btn" id="forgot-btn" style="width:100%; justify-content:center;">Send Reset Link</button>
+        <p class="msg" id="forgot-msg"></p>
+        <p style="text-align:center; margin-top:14px;">
+          <a href="#" id="back-to-login-link" style="font-size:13px;">Back to log in</a>
+        </p>
       </div>
 
       <div id="setpw-form" hidden>
@@ -51,6 +67,14 @@
 
   const signinForm = document.getElementById('signin-form');
   const setpwForm = document.getElementById('setpw-form');
+  const forgotForm = document.getElementById('forgot-form');
+
+  function isAuthLinkHash() {
+    return (
+      window.location.hash.includes('access_token') &&
+      (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))
+    );
+  }
 
   async function routeAfterLogin() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -59,15 +83,18 @@
     window.location.href = admin ? 'admin.html' : 'dashboard.html';
   }
 
-  // If the user arrived via an admin invite link, Supabase's client
-  // detects the token in the URL and creates a session automatically —
-  // show the "set password" form instead of the login form.
+  // If the user arrived via an invite or password-reset link, Supabase's
+  // client detects the token in the URL and creates a session
+  // automatically — show the "set password" form instead of the login
+  // form (for both cases the fix is the same: set a password and go).
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
-      // Only show the set-password step if this looks like a fresh invite
-      // (the URL still carries the auth params Supabase appended).
-      if (window.location.hash.includes('access_token') && window.location.hash.includes('type=invite')) {
+      // Only show the set-password step if this looks like a fresh
+      // invite/recovery link (the URL still carries the auth params
+      // Supabase appended).
+      if (isAuthLinkHash()) {
         signinForm.hidden = true;
+        forgotForm.hidden = true;
         setpwForm.hidden = false;
       } else if (event === 'SIGNED_IN') {
         routeAfterLogin();
@@ -110,8 +137,51 @@
     routeAfterLogin();
   });
 
-  // Already signed in? skip straight through.
-  routeAfterLogin();
+  document.getElementById('forgot-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('forgot-email').value = document.getElementById('email').value;
+    signinForm.hidden = true;
+    forgotForm.hidden = false;
+  });
+
+  document.getElementById('back-to-login-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    forgotForm.hidden = true;
+    signinForm.hidden = false;
+  });
+
+  document.getElementById('forgot-btn').addEventListener('click', async () => {
+    const email = document.getElementById('forgot-email').value.trim();
+    const msg = document.getElementById('forgot-msg');
+    if (!email) {
+      msg.textContent = 'Enter your email first.';
+      msg.className = 'msg error';
+      return;
+    }
+    msg.textContent = 'Sending…';
+    msg.className = 'msg';
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/portal/login.html`,
+    });
+    if (error) {
+      msg.textContent = error.message;
+      msg.className = 'msg error';
+      return;
+    }
+    msg.textContent = "Check your email for a reset link.";
+    msg.className = 'msg success';
+  });
+
+  // Already signed in? skip straight through — but not if we just arrived
+  // via an invite/recovery link. Supabase's client processes that link's
+  // token before this line runs, so getSession() would already return a
+  // session and this would redirect straight past the set-password step
+  // above, leaving the account with no password. The onAuthStateChange
+  // handler already caught that case and is showing the set-password
+  // form instead.
+  if (!isAuthLinkHash()) {
+    routeAfterLogin();
+  }
 </script>
 </body>
 </html>
