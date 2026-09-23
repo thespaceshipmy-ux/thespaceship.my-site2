@@ -87,10 +87,12 @@
 
     <h2>Members</h2>
     <div class="card">
-      <table id="members-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Membership</th><th>Renewal date</th><th>Status</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <div style="overflow-x:auto;">
+        <table id="members-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Membership</th><th>Renewal date</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
       <p class="empty" id="members-empty" hidden>No members yet.</p>
     </div>
   </div>
@@ -220,9 +222,9 @@
         <td>${m.full_name}</td>
         <td>${m.email}</td>
         <td>${m.membership_type}</td>
-        <td><input type="date" value="${m.renewal_date || ''}" data-field="renewal_date" data-id="${m.id}" style="padding:6px 8px; font-size:13px; width:135px;"></td>
+        <td><input type="date" value="${m.renewal_date || ''}" data-field="renewal_date" data-id="${m.id}" style="padding:6px 4px; font-size:13px; width:112px;"></td>
         <td>
-          <select data-field="status" data-id="${m.id}" style="padding:6px 8px; font-size:13px; width:auto; min-width:112px;">
+          <select data-field="status" data-id="${m.id}" style="padding:6px 8px; font-size:13px; width:auto; min-width:108px;">
             <option value="active" ${m.status === 'active' ? 'selected' : ''}>active</option>
             <option value="expired" ${m.status === 'expired' ? 'selected' : ''}>expired</option>
             <option value="cancelled" ${m.status === 'cancelled' ? 'selected' : ''}>cancelled</option>
