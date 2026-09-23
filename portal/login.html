@@ -16,7 +16,9 @@
     <div class="card center-card">
       <h1>The Spaceship</h1>
 
-      <div id="signin-form">
+      <!-- Real <form> elements (not just <div>s) so pressing Enter in any
+           field submits, same as clicking the button. -->
+      <form id="signin-form">
         <p class="lede" style="text-align:center; margin:0 0 20px;">Member login</p>
         <div class="field">
           <label for="email">Email</label>
@@ -26,35 +28,35 @@
           <label for="password">Password</label>
           <input type="password" id="password" autocomplete="current-password">
         </div>
-        <button class="btn" id="signin-btn" style="width:100%; justify-content:center;">Log In</button>
+        <button class="btn" type="submit" id="signin-btn" style="width:100%; justify-content:center;">Log In</button>
         <p class="msg" id="signin-msg"></p>
         <p style="text-align:center; margin-top:14px;">
           <a href="#" id="forgot-link" style="font-size:13px;">Forgot your password?</a>
         </p>
-      </div>
+      </form>
 
-      <div id="forgot-form" hidden>
+      <form id="forgot-form" hidden>
         <p class="lede" style="text-align:center; margin:0 0 20px;">Enter your email and we'll send you a reset link.</p>
         <div class="field">
           <label for="forgot-email">Email</label>
           <input type="email" id="forgot-email" autocomplete="username">
         </div>
-        <button class="btn" id="forgot-btn" style="width:100%; justify-content:center;">Send Reset Link</button>
+        <button class="btn" type="submit" id="forgot-btn" style="width:100%; justify-content:center;">Send Reset Link</button>
         <p class="msg" id="forgot-msg"></p>
         <p style="text-align:center; margin-top:14px;">
           <a href="#" id="back-to-login-link" style="font-size:13px;">Back to log in</a>
         </p>
-      </div>
+      </form>
 
-      <div id="setpw-form" hidden>
+      <form id="setpw-form" hidden>
         <p class="lede" style="text-align:center; margin:0 0 20px;">Welcome — set a password for your account.</p>
         <div class="field">
           <label for="new-password">New password</label>
           <input type="password" id="new-password" autocomplete="new-password">
         </div>
-        <button class="btn" id="setpw-btn" style="width:100%; justify-content:center;">Set Password &amp; Continue</button>
+        <button class="btn" type="submit" id="setpw-btn" style="width:100%; justify-content:center;">Set Password &amp; Continue</button>
         <p class="msg" id="setpw-msg"></p>
-      </div>
+      </form>
     </div>
   </div>
 </main>
@@ -63,18 +65,22 @@
   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
   import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
+  // Read + classify the URL hash BEFORE creating the Supabase client.
+  // Supabase parses out any auth params (access_token, type, ...) from the
+  // hash as soon as it processes them and then strips the hash from the
+  // URL — so re-reading window.location.hash later (from an event handler,
+  // after an await) is unreliable, it may already be gone by then. Capture
+  // it once, up front, and use that everywhere below instead.
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const authLinkType = hashParams.get('type'); // 'invite' | 'recovery' | null
+  const cameFromAuthLink = hashParams.has('access_token') && (authLinkType === 'invite' || authLinkType === 'recovery');
+  const authLinkError = hashParams.get('error_description') || hashParams.get('error');
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   const signinForm = document.getElementById('signin-form');
   const setpwForm = document.getElementById('setpw-form');
   const forgotForm = document.getElementById('forgot-form');
-
-  function isAuthLinkHash() {
-    return (
-      window.location.hash.includes('access_token') &&
-      (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))
-    );
-  }
 
   async function routeAfterLogin() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -83,26 +89,26 @@
     window.location.href = admin ? 'admin.html' : 'dashboard.html';
   }
 
-  // If the user arrived via an invite or password-reset link, Supabase's
-  // client detects the token in the URL and creates a session
-  // automatically — show the "set password" form instead of the login
-  // form (for both cases the fix is the same: set a password and go).
-  supabase.auth.onAuthStateChange((event) => {
-    if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
-      // Only show the set-password step if this looks like a fresh
-      // invite/recovery link (the URL still carries the auth params
-      // Supabase appended).
-      if (isAuthLinkHash()) {
-        signinForm.hidden = true;
-        forgotForm.hidden = true;
-        setpwForm.hidden = false;
-      } else if (event === 'SIGNED_IN') {
-        routeAfterLogin();
-      }
+  if (cameFromAuthLink) {
+    // Arrived via an invite or password-reset link. Supabase's client
+    // picks up the session from the URL in the background (asynchronously)
+    // — show the set-password step right away rather than waiting on an
+    // auth event that may already have fired before we could listen for it.
+    signinForm.hidden = true;
+    forgotForm.hidden = true;
+    setpwForm.hidden = false;
+  } else {
+    if (authLinkError) {
+      const msg = document.getElementById('signin-msg');
+      msg.textContent = `${decodeURIComponent(authLinkError).replace(/\+/g, ' ')} Request a new link and try again.`;
+      msg.className = 'msg error';
     }
-  });
+    // Already signed in from an earlier visit? skip straight through.
+    routeAfterLogin();
+  }
 
-  document.getElementById('signin-btn').addEventListener('click', async () => {
+  signinForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
     const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
     const msg = document.getElementById('signin-msg');
@@ -118,7 +124,8 @@
     routeAfterLogin();
   });
 
-  document.getElementById('setpw-btn').addEventListener('click', async () => {
+  setpwForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
     const password = document.getElementById('new-password').value;
     const msg = document.getElementById('setpw-msg');
     if (password.length < 8) {
@@ -128,6 +135,16 @@
     }
     msg.textContent = 'Saving…';
     msg.className = 'msg';
+    // The session from the invite/recovery link is established
+    // asynchronously in the background — make sure it's actually ready
+    // before trying to set the password, and give a clear message if the
+    // link turned out to be expired/already used instead of a silent fail.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      msg.textContent = "This link has expired or was already used. Request a new one and try again.";
+      msg.className = 'msg error';
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ password });
     if (error) {
       msg.textContent = error.message;
@@ -150,7 +167,8 @@
     signinForm.hidden = false;
   });
 
-  document.getElementById('forgot-btn').addEventListener('click', async () => {
+  forgotForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
     const email = document.getElementById('forgot-email').value.trim();
     const msg = document.getElementById('forgot-msg');
     if (!email) {
@@ -171,17 +189,6 @@
     msg.textContent = "Check your email for a reset link.";
     msg.className = 'msg success';
   });
-
-  // Already signed in? skip straight through — but not if we just arrived
-  // via an invite/recovery link. Supabase's client processes that link's
-  // token before this line runs, so getSession() would already return a
-  // session and this would redirect straight past the set-password step
-  // above, leaving the account with no password. The onAuthStateChange
-  // handler already caught that case and is showing the set-password
-  // form instead.
-  if (!isAuthLinkHash()) {
-    routeAfterLogin();
-  }
 </script>
 </body>
 </html>
