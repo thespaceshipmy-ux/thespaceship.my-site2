@@ -30,7 +30,7 @@ create table if not exists members (
   full_name text not null,
   email text not null,
   phone text,
-  membership_type text not null check (membership_type in ('Jamming', 'Recording', 'Producer/Engineer')),
+  membership_type text not null check (membership_type in ('Jamming', 'Recording', 'Engineer')),
   renewal_date date,
   status text not null default 'active' check (status in ('active', 'expired', 'cancelled')),
   created_at timestamptz not null default now()
