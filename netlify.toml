@@ -1,0 +1,10 @@
+[build]
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Keep the portal pages reachable at /portal/... and functions at /.netlify/functions/...
+# No redirects needed beyond Netlify's defaults — this file just declares the
+# functions folder so Netlify picks up create-member.js, notify-new-booking.js
+# and confirm-booking.js automatically on deploy.

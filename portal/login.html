@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Member Login — The Spaceship</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="portal.css">
+</head>
+<body>
+<main>
+  <div class="wrap">
+    <div class="card center-card">
+      <h1>The Spaceship</h1>
+
+      <div id="signin-form">
+        <p class="lede" style="text-align:center; margin:0 0 20px;">Member login</p>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password">
+        </div>
+        <button class="btn" id="signin-btn" style="width:100%; justify-content:center;">Log In</button>
+        <p class="msg" id="signin-msg"></p>
+      </div>
+
+      <div id="setpw-form" hidden>
+        <p class="lede" style="text-align:center; margin:0 0 20px;">Welcome — set a password for your account.</p>
+        <div class="field">
+          <label for="new-password">New password</label>
+          <input type="password" id="new-password" autocomplete="new-password">
+        </div>
+        <button class="btn" id="setpw-btn" style="width:100%; justify-content:center;">Set Password &amp; Continue</button>
+        <p class="msg" id="setpw-msg"></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const signinForm = document.getElementById('signin-form');
+  const setpwForm = document.getElementById('setpw-form');
+
+  async function routeAfterLogin() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data: admin } = await supabase.from('admins').select('email').eq('email', session.user.email).maybeSingle();
+    window.location.href = admin ? 'admin.html' : 'dashboard.html';
+  }
+
+  // If the user arrived via an admin invite link, Supabase's client
+  // detects the token in the URL and creates a session automatically —
+  // show the "set password" form instead of the login form.
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+      // Only show the set-password step if this looks like a fresh invite
+      // (the URL still carries the auth params Supabase appended).
+      if (window.location.hash.includes('access_token') && window.location.hash.includes('type=invite')) {
+        signinForm.hidden = true;
+        setpwForm.hidden = false;
+      } else if (event === 'SIGNED_IN') {
+        routeAfterLogin();
+      }
+    }
+  });
+
+  document.getElementById('signin-btn').addEventListener('click', async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const msg = document.getElementById('signin-msg');
+    msg.textContent = 'Signing in…';
+    msg.className = 'msg';
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      msg.textContent = error.message;
+      msg.className = 'msg error';
+      return;
+    }
+    msg.textContent = '';
+    routeAfterLogin();
+  });
+
+  document.getElementById('setpw-btn').addEventListener('click', async () => {
+    const password = document.getElementById('new-password').value;
+    const msg = document.getElementById('setpw-msg');
+    if (password.length < 8) {
+      msg.textContent = 'Use at least 8 characters.';
+      msg.className = 'msg error';
+      return;
+    }
+    msg.textContent = 'Saving…';
+    msg.className = 'msg';
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      msg.textContent = error.message;
+      msg.className = 'msg error';
+      return;
+    }
+    routeAfterLogin();
+  });
+
+  // Already signed in? skip straight through.
+  routeAfterLogin();
+</script>
+</body>
+</html>

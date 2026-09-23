@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Membership — The Spaceship</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="portal.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brandmark" href="../index.html">THE SPACESHIP</a>
+    <div class="top-actions">
+      <span id="who"></span>
+      <button id="logout">Log Out</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <h1>My Membership</h1>
+    <p class="lede">Request a session and track your booking status here.</p>
+
+    <div class="card" id="member-card">Loading…</div>
+
+    <h2>Request a Session</h2>
+    <div class="card">
+      <form id="booking-form">
+        <div class="form-grid">
+          <div class="field">
+            <label for="b-date">Date</label>
+            <input type="date" id="b-date" required>
+          </div>
+          <div class="field">
+            <label for="b-time">Start time</label>
+            <input type="time" id="b-time" required>
+          </div>
+          <div class="field">
+            <label for="b-duration">Duration (hours)</label>
+            <input type="number" id="b-duration" min="1" step="0.5" value="2" required>
+          </div>
+          <div class="field">
+            <label for="b-notes">Notes <span style="opacity:.6;">(optional)</span></label>
+            <input type="text" id="b-notes" placeholder="e.g. bringing 2 friends">
+          </div>
+        </div>
+        <button class="btn" type="submit">Request Session</button>
+        <p class="msg" id="booking-msg"></p>
+      </form>
+    </div>
+
+    <h2>My Bookings</h2>
+    <div class="card">
+      <table id="bookings-table">
+        <thead>
+          <tr><th>Date</th><th>Time</th><th>Duration</th><th>Status</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p class="empty" id="bookings-empty" hidden>No bookings yet.</p>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let member = null;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    window.location.href = 'login.html';
+  } else {
+    document.getElementById('who').textContent = session.user.email;
+  }
+
+  document.getElementById('logout').addEventListener('click', async () => {
+    await supabase.auth.signOut();
+    window.location.href = 'login.html';
+  });
+
+  function badge(status) {
+    return `<span class="badge ${status}">${status}</span>`;
+  }
+
+  async function loadMember() {
+    const { data, error } = await supabase.from('members').select('*').eq('user_id', session.user.id).maybeSingle();
+    const card = document.getElementById('member-card');
+    if (error || !data) {
+      card.innerHTML = `<p>We couldn't find a membership linked to this account. Contact The Spaceship to get set up.</p>`;
+      return;
+    }
+    member = data;
+    card.innerHTML = `
+      <p><strong>${member.full_name}</strong> — ${member.membership_type} ${badge(member.status)}</p>
+      <p style="margin-top:8px;">Renewal date: <strong>${member.renewal_date || 'Not set yet'}</strong></p>
+    `;
+  }
+
+  async function loadBookings() {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('member_id', member.id)
+      .order('requested_date', { ascending: false });
+    const tbody = document.querySelector('#bookings-table tbody');
+    const empty = document.getElementById('bookings-empty');
+    tbody.innerHTML = '';
+    if (error || !data || data.length === 0) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const b of data) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${b.requested_date}</td><td>${b.requested_start_time}</td><td>${b.duration_hours} hr</td><td>${badge(b.status)}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  document.getElementById('booking-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('booking-msg');
+    if (!member) {
+      msg.textContent = 'No membership linked to this account yet.';
+      msg.className = 'msg error';
+      return;
+    }
+    msg.textContent = 'Sending request…';
+    msg.className = 'msg';
+
+    const payload = {
+      member_id: member.id,
+      requested_date: document.getElementById('b-date').value,
+      requested_start_time: document.getElementById('b-time').value,
+      duration_hours: parseFloat(document.getElementById('b-duration').value),
+      notes: document.getElementById('b-notes').value || null,
+    };
+
+    const { data, error } = await supabase.from('bookings').insert(payload).select().single();
+    if (error) {
+      msg.textContent = error.message;
+      msg.className = 'msg error';
+      return;
+    }
+
+    // Best-effort: let the studio know a request is waiting. If this
+    // fails the booking still exists and will show up in the admin page.
+    try {
+      await fetch('/.netlify/functions/notify-new-booking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ booking_id: data.id }),
+      });
+    } catch {}
+
+    msg.textContent = 'Request sent — we\'ll confirm it shortly.';
+    msg.className = 'msg success';
+    e.target.reset();
+    document.getElementById('b-duration').value = '2';
+    loadBookings();
+  });
+
+  await loadMember();
+  if (member) await loadBookings();
+</script>
+</body>
+</html>

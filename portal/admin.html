@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — The Spaceship</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="portal.css">
+<style>
+  .inline-edit{ display:flex; gap:6px; align-items:center; }
+  .inline-edit input, .inline-edit select{ padding:6px 8px; font-size:13px; }
+  td.actions{ white-space:nowrap; }
+  td.actions .btn{ margin-right:6px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brandmark" href="../index.html">THE SPACESHIP — ADMIN</a>
+    <div class="top-actions">
+      <span id="who"></span>
+      <button id="logout">Log Out</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <h1>Admin</h1>
+    <p class="lede">Manage members, renewal dates, and booking requests.</p>
+
+    <h2>Pending Booking Requests</h2>
+    <div class="card">
+      <table id="pending-table">
+        <thead><tr><th>Member</th><th>Date</th><th>Time</th><th>Duration</th><th>Notes</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="empty" id="pending-empty" hidden>No pending requests.</p>
+    </div>
+
+    <h2>All Bookings</h2>
+    <div class="card">
+      <table id="all-bookings-table">
+        <thead><tr><th>Member</th><th>Date</th><th>Time</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="empty" id="all-bookings-empty" hidden>No bookings yet.</p>
+    </div>
+
+    <h2>Add a Member</h2>
+    <div class="card">
+      <form id="add-member-form">
+        <div class="form-grid">
+          <div class="field">
+            <label for="m-name">Full name</label>
+            <input type="text" id="m-name" required>
+          </div>
+          <div class="field">
+            <label for="m-email">Email</label>
+            <input type="email" id="m-email" required>
+          </div>
+          <div class="field">
+            <label for="m-phone">Phone</label>
+            <input type="text" id="m-phone">
+          </div>
+          <div class="field">
+            <label for="m-type">Membership</label>
+            <select id="m-type">
+              <option>Jamming</option>
+              <option>Recording</option>
+              <option>Producer/Engineer</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="m-renewal">Renewal date</label>
+            <input type="date" id="m-renewal">
+          </div>
+        </div>
+        <button class="btn" type="submit">Create Member &amp; Send Invite</button>
+        <p class="msg" id="add-member-msg"></p>
+      </form>
+    </div>
+
+    <h2>Members</h2>
+    <div class="card">
+      <table id="members-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Membership</th><th>Renewal date</th><th>Status</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="empty" id="members-empty" hidden>No members yet.</p>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    window.location.href = 'login.html';
+  }
+  const { data: adminRow } = await supabase.from('admins').select('email').eq('email', session.user.email).maybeSingle();
+  if (!adminRow) {
+    document.body.innerHTML = '<main><div class="wrap"><div class="card"><p>This account isn\'t an admin.</p></div></div></main>';
+    throw new Error('not admin');
+  }
+  document.getElementById('who').textContent = session.user.email;
+
+  document.getElementById('logout').addEventListener('click', async () => {
+    await supabase.auth.signOut();
+    window.location.href = 'login.html';
+  });
+
+  function badge(status) {
+    return `<span class="badge ${status}">${status}</span>`;
+  }
+
+  async function callFunction(name, payload) {
+    const res = await fetch(`/.netlify/functions/${name}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  }
+
+  // ---------- Bookings ----------
+  async function loadBookings() {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id, requested_date, requested_start_time, duration_hours, notes, status, members(full_name)')
+      .order('requested_date', { ascending: true });
+
+    const pendingBody = document.querySelector('#pending-table tbody');
+    const allBody = document.querySelector('#all-bookings-table tbody');
+    pendingBody.innerHTML = '';
+    allBody.innerHTML = '';
+
+    if (error || !data || data.length === 0) {
+      document.getElementById('pending-empty').hidden = false;
+      document.getElementById('all-bookings-empty').hidden = false;
+      return;
+    }
+
+    const pending = data.filter((b) => b.status === 'pending');
+    document.getElementById('pending-empty').hidden = pending.length > 0;
+    for (const b of pending) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${b.members?.full_name || '—'}</td>
+        <td>${b.requested_date}</td>
+        <td>${b.requested_start_time}</td>
+        <td>${b.duration_hours} hr</td>
+        <td>${b.notes || '—'}</td>
+        <td class="actions">
+          <button class="btn small confirm-btn" data-id="${b.id}">Confirm</button>
+          <button class="btn small ghost decline-btn" data-id="${b.id}">Decline</button>
+        </td>`;
+      pendingBody.appendChild(tr);
+    }
+
+    document.getElementById('all-bookings-empty').hidden = data.length > 0;
+    for (const b of data) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${b.members?.full_name || '—'}</td><td>${b.requested_date}</td><td>${b.requested_start_time}</td><td>${badge(b.status)}</td>`;
+      allBody.appendChild(tr);
+    }
+
+    pendingBody.querySelectorAll('.confirm-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await callFunction('confirm-booking', { booking_id: btn.dataset.id, action: 'confirm' });
+          await loadBookings();
+        } catch (e) {
+          alert(e.message);
+          btn.disabled = false;
+        }
+      });
+    });
+    pendingBody.querySelectorAll('.decline-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          await callFunction('confirm-booking', { booking_id: btn.dataset.id, action: 'decline' });
+          await loadBookings();
+        } catch (e) {
+          alert(e.message);
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  // ---------- Members ----------
+  async function loadMembers() {
+    const { data, error } = await supabase.from('members').select('*').order('created_at', { ascending: false });
+    const tbody = document.querySelector('#members-table tbody');
+    tbody.innerHTML = '';
+    if (error || !data || data.length === 0) {
+      document.getElementById('members-empty').hidden = false;
+      return;
+    }
+    document.getElementById('members-empty').hidden = true;
+    for (const m of data) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${m.full_name}</td>
+        <td>${m.email}</td>
+        <td>${m.membership_type}</td>
+        <td><input type="date" value="${m.renewal_date || ''}" data-field="renewal_date" data-id="${m.id}" style="padding:6px 8px; font-size:13px;"></td>
+        <td>
+          <select data-field="status" data-id="${m.id}" style="padding:6px 8px; font-size:13px;">
+            <option value="active" ${m.status === 'active' ? 'selected' : ''}>active</option>
+            <option value="expired" ${m.status === 'expired' ? 'selected' : ''}>expired</option>
+            <option value="cancelled" ${m.status === 'cancelled' ? 'selected' : ''}>cancelled</option>
+          </select>
+        </td>
+        <td><button class="btn small save-member-btn" data-id="${m.id}">Save</button></td>`;
+      tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll('.save-member-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const renewal = tbody.querySelector(`input[data-field="renewal_date"][data-id="${id}"]`).value || null;
+        const status = tbody.querySelector(`select[data-field="status"][data-id="${id}"]`).value;
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        const { error } = await supabase.from('members').update({ renewal_date: renewal, status }).eq('id', id);
+        btn.disabled = false;
+        btn.textContent = error ? 'Error' : 'Saved';
+        setTimeout(() => { btn.textContent = 'Save'; }, 1500);
+      });
+    });
+  }
+
+  document.getElementById('add-member-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('add-member-msg');
+    msg.textContent = 'Creating…';
+    msg.className = 'msg';
+    try {
+      await callFunction('create-member', {
+        full_name: document.getElementById('m-name').value,
+        email: document.getElementById('m-email').value,
+        phone: document.getElementById('m-phone').value,
+        membership_type: document.getElementById('m-type').value,
+        renewal_date: document.getElementById('m-renewal').value || null,
+      });
+      msg.textContent = 'Member created — invite email sent.';
+      msg.className = 'msg success';
+      e.target.reset();
+      loadMembers();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'msg error';
+    }
+  });
+
+  await loadBookings();
+  await loadMembers();
+</script>
+</body>
+</html>
