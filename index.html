@@ -437,16 +437,10 @@
   }
   .package .lbl{ font-family:'Space Mono', monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; opacity:.7; }
   .package .amt{ font-family:'Anton', sans-serif; font-size:32px; color:var(--gold); margin-top:8px; }
+  .package .amt-unit{ font-family:'Space Mono', monospace; font-size:14px; color:var(--gold); opacity:.7; margin-left:2px; }
   .package .desc{ font-size:12.5px; opacity:.65; margin-top:6px; font-family:'Space Mono', monospace; }
 
-  .membership-strip{
-    margin-top:44px;
-    border:1px dashed rgba(250,246,236,0.35);
-    padding:22px 24px;
-    display:flex; flex-wrap:wrap; gap:24px; justify-content:space-between; align-items:center;
-  }
-  .membership-strip .m-title{ font-family:'Anton', sans-serif; font-size:20px; color:var(--paper); }
-  .membership-strip .m-sub{ font-family:'Space Mono', monospace; font-size:12px; opacity:.7; max-width:420px; }
+  .membership-cta{ margin-top:24px; text-align:center; }
 
   /* ---------- PORTFOLIO / SPOTIFY ---------- */
   .portfolio-frame{
@@ -887,12 +881,26 @@
       </div>
     </div>
 
-    <div class="membership-strip">
-      <div>
-        <div class="m-title">Monthly Membership</div>
-        <div class="m-sub">Jamming RM200 · Recording RM400 · Engineer RM500 — unlimited days, 4-hour slots, first come first serve. Bring your own gear.</div>
+    <p class="package-note" style="margin-top:44px;">Monthly Membership — unlimited days, 4-hour slots, first come first serve. Bring your own gear.</p>
+    <div class="packages">
+      <div class="package">
+        <div class="lbl">Jamming</div>
+        <div class="amt">RM200<span class="amt-unit">/mo</span></div>
+        <div class="desc">Unlimited monthly access</div>
       </div>
-      <a href="#order" class="btn ghost" style="border-color:var(--gold); color:var(--gold);">Enquire</a>
+      <div class="package">
+        <div class="lbl">Recording</div>
+        <div class="amt">RM400<span class="amt-unit">/mo</span></div>
+        <div class="desc">Unlimited monthly access</div>
+      </div>
+      <div class="package">
+        <div class="lbl">Engineer</div>
+        <div class="amt">RM500<span class="amt-unit">/mo</span></div>
+        <div class="desc">Unlimited monthly access</div>
+      </div>
+    </div>
+    <div class="membership-cta">
+      <a href="#order" class="btn ghost" style="border-color:var(--gold); color:var(--gold);">Enquire About Membership</a>
     </div>
   </div>
 </section>
