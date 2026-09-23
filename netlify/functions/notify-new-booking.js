@@ -1,12 +1,13 @@
 // POST /.netlify/functions/notify-new-booking
 // Called by the member dashboard right after it inserts a new booking
-// request. Emails the studio so Aiman knows a request is waiting in the
-// admin page. This does NOT touch the calendar — that only happens once
-// the request is confirmed (see confirm-booking.js).
+// request. Emails the studio so Aiman knows a request is waiting — with
+// one-click Confirm / Decline links (handled by booking-action.js) so it
+// can be actioned straight from the email, no admin-page login required.
+// This does NOT touch the calendar — that only happens once the request
+// is confirmed (see lib.js's performBookingAction).
 //
 // Body: { booking_id }
-const { Resend } = require('resend');
-const { getServiceClient, getCallerUser, json } = require('./lib/lib');
+const { getServiceClient, getCallerUser, sendEmail, json } = require('./lib/lib');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -30,37 +31,52 @@ exports.handler = async (event) => {
   // about bookings that aren't theirs).
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('id, requested_date, requested_start_time, duration_hours, notes, member_id, members(full_name, email, phone, membership_type, user_id)')
+    .select('id, requested_date, requested_start_time, duration_hours, notes, member_id, action_token, members(full_name, email, phone, membership_type, user_id)')
     .eq('id', booking_id)
     .single();
 
   if (bookingError || !booking) return json(404, { error: 'Booking not found' });
   if (booking.members.user_id !== caller.id) return json(403, { error: 'Not your booking' });
 
-  if (process.env.RESEND_API_KEY && process.env.ADMIN_NOTIFICATION_EMAIL && process.env.EMAIL_FROM) {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    try {
-      await resend.emails.send({
-        from: process.env.EMAIL_FROM,
-        to: process.env.ADMIN_NOTIFICATION_EMAIL,
-        subject: `New booking request — ${booking.members.full_name}`,
-        text: [
-          `${booking.members.full_name} (${booking.members.membership_type} member) requested a session.`,
-          ``,
-          `Date: ${booking.requested_date}`,
-          `Time: ${booking.requested_start_time}`,
-          `Duration: ${booking.duration_hours} hr(s)`,
-          `Notes: ${booking.notes || '—'}`,
-          `Contact: ${booking.members.email}${booking.members.phone ? ' / ' + booking.members.phone : ''}`,
-          ``,
-          `Review and confirm it in the admin page.`,
-        ].join('\n'),
-      });
-    } catch (e) {
-      // Don't fail the request over a flaky email send — the booking is
-      // already saved and will show up next time the admin page is opened.
-      console.error('notify-new-booking email failed', e);
-    }
+  if (process.env.ADMIN_NOTIFICATION_EMAIL) {
+    const portalUrl = process.env.PORTAL_URL || '';
+    const confirmUrl = `${portalUrl}/.netlify/functions/booking-action?id=${booking.id}&token=${booking.action_token}&action=confirm`;
+    const declineUrl = `${portalUrl}/.netlify/functions/booking-action?id=${booking.id}&token=${booking.action_token}&action=decline`;
+    const contact = `${booking.members.email}${booking.members.phone ? ' / ' + booking.members.phone : ''}`;
+
+    await sendEmail({
+      to: process.env.ADMIN_NOTIFICATION_EMAIL,
+      subject: `New booking request — ${booking.members.full_name}`,
+      text: [
+        `${booking.members.full_name} (${booking.members.membership_type} member) requested a session.`,
+        ``,
+        `Date: ${booking.requested_date}`,
+        `Time: ${booking.requested_start_time}`,
+        `Duration: ${booking.duration_hours} hr(s)`,
+        `Notes: ${booking.notes || '—'}`,
+        `Contact: ${contact}`,
+        ``,
+        `Confirm: ${confirmUrl}`,
+        `Decline: ${declineUrl}`,
+        ``,
+        `(Or review it in the admin page.)`,
+      ].join('\n'),
+      html: [
+        `<p>${booking.members.full_name} (${booking.members.membership_type} member) requested a session.</p>`,
+        `<p>`,
+        `Date: ${booking.requested_date}<br>`,
+        `Time: ${booking.requested_start_time}<br>`,
+        `Duration: ${booking.duration_hours} hr(s)<br>`,
+        `Notes: ${booking.notes || '—'}<br>`,
+        `Contact: ${contact}`,
+        `</p>`,
+        `<p>`,
+        `<a href="${confirmUrl}" style="display:inline-block;padding:10px 20px;background:#12142b;color:#fff;text-decoration:none;border-radius:4px;margin-right:10px;">Confirm</a>`,
+        `<a href="${declineUrl}" style="display:inline-block;padding:10px 20px;border:1px solid #12142b;color:#12142b;text-decoration:none;border-radius:4px;">Decline</a>`,
+        `</p>`,
+        portalUrl ? `<p>Or review it in the <a href="${portalUrl}/portal/admin.html">admin page</a>.</p>` : '',
+      ].join(''),
+    });
   }
 
   return json(200, { ok: true });

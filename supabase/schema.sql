@@ -62,6 +62,10 @@ create table if not exists bookings (
   notes text,
   status text not null default 'pending' check (status in ('pending', 'confirmed', 'declined', 'cancelled')),
   calendar_event_id text,
+  -- Random per-booking secret used by the one-click Confirm/Decline links
+  -- in the "new booking request" email (see booking-action.js), so admin
+  -- can act on a request without signing into the admin page.
+  action_token uuid not null default gen_random_uuid(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
