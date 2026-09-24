@@ -104,3 +104,10 @@ th{ font-family:'Space Mono', monospace; font-size:11px; letter-spacing:.08em; t
 .center-card h1{ font-size:26px; text-align:center; margin-bottom:24px; }
 
 .empty{ opacity:.6; font-style:italic; padding:16px 0; }
+
+.calendar-note{ font-size:13px; opacity:.75; margin-bottom:14px; }
+.calendar-embed{
+  border:1.5px solid var(--line);
+  overflow-x:auto;
+}
+.calendar-embed iframe{ display:block; width:100%; min-width:560px; border:0; }
