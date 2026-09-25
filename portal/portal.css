@@ -110,4 +110,4 @@ th{ font-family:'Space Mono', monospace; font-size:11px; letter-spacing:.08em; t
   border:1.5px solid var(--line);
   overflow-x:auto;
 }
-.calendar-embed iframe{ display:block; width:100%; min-width:560px; border:0; }
+.calendar-embed iframe{ display:block; width:100%; min-width:280px; border:0; }
